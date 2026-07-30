@@ -1,20 +1,15 @@
 package com.tickflow;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import javax.inject.Inject;
 import javax.inject.Singleton;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.Clip;
-import javax.sound.sampled.FloatControl;
-import javax.sound.sampled.LineUnavailableException;
-import javax.sound.sampled.UnsupportedAudioFileException;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.client.audio.AudioPlayer;
 
 /**
  * Soft synthesized metronome tick — smooth sine with a gentle envelope (not a mechanical click).
- * Playback is fire-and-forget on a short Clip; never blocks the client thread for generation after init.
+ * Playback goes through RuneLite {@link AudioPlayer} (Plugin Hub forbids direct javax.sound use).
  */
 @Slf4j
 @Singleton
@@ -25,10 +20,16 @@ public class TickMetronome
 	private static final double FREQ_HZ = 660.0;
 	private static final double PEAK = 0.22;
 
+	private final AudioPlayer audioPlayer;
 	private final AtomicBoolean ready = new AtomicBoolean(false);
-	private byte[] pcmWav;
-	private Clip clip;
-	private float gainDb = -10f;
+	private volatile byte[] pcmWav;
+	private volatile float gainDb = -10f;
+
+	@Inject
+	TickMetronome(AudioPlayer audioPlayer)
+	{
+		this.audioPlayer = audioPlayer;
+	}
 
 	public synchronized void start()
 	{
@@ -36,28 +37,13 @@ public class TickMetronome
 		{
 			return;
 		}
-		try
-		{
-			pcmWav = buildSoftTickWav();
-			clip = AudioSystem.getClip();
-			try (AudioInputStream in = AudioSystem.getAudioInputStream(new ByteArrayInputStream(pcmWav)))
-			{
-				clip.open(in);
-			}
-			applyGain();
-			ready.set(true);
-		}
-		catch (LineUnavailableException | UnsupportedAudioFileException | IOException | IllegalArgumentException ex)
-		{
-			log.debug("Tick metronome unavailable", ex);
-			closeClip();
-		}
+		pcmWav = buildSoftTickWav();
+		ready.set(true);
 	}
 
 	public synchronized void stop()
 	{
 		ready.set(false);
-		closeClip();
 		pcmWav = null;
 	}
 
@@ -66,72 +52,23 @@ public class TickMetronome
 		int clamped = Math.max(5, Math.min(100, percent));
 		// Map 5..100% to roughly -24dB .. -2dB (quiet, but floor still audible).
 		gainDb = -24f + (clamped - 5) * (22f / 95f);
-		synchronized (this)
-		{
-			applyGain();
-		}
 	}
 
 	public void play()
 	{
-		Clip local;
-		synchronized (this)
-		{
-			if (!ready.get() || clip == null)
-			{
-				return;
-			}
-			local = clip;
-		}
-		try
-		{
-			if (local.isRunning())
-			{
-				local.stop();
-			}
-			local.setFramePosition(0);
-			local.start();
-		}
-		catch (IllegalStateException ex)
-		{
-			log.debug("Tick sound play failed", ex);
-		}
-	}
-
-	private void applyGain()
-	{
-		if (clip == null)
+		byte[] wav = pcmWav;
+		if (!ready.get() || wav == null)
 		{
 			return;
 		}
 		try
 		{
-			if (clip.isControlSupported(FloatControl.Type.MASTER_GAIN))
-			{
-				FloatControl gain = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
-				float value = Math.max(gain.getMinimum(), Math.min(gain.getMaximum(), gainDb));
-				gain.setValue(value);
-			}
+			audioPlayer.play(new ByteArrayInputStream(wav), gainDb);
 		}
-		catch (IllegalArgumentException ignored)
+		catch (Exception ex)
 		{
-			// Some mixers omit gain controls.
-		}
-	}
-
-	private void closeClip()
-	{
-		if (clip != null)
-		{
-			try
-			{
-				clip.stop();
-				clip.close();
-			}
-			catch (Exception ignored)
-			{
-			}
-			clip = null;
+			// AudioPlayer may throw IO / sound-line failures; keep tick path quiet.
+			log.debug("Tick sound play failed", ex);
 		}
 	}
 
