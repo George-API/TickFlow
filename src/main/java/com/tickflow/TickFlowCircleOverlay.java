@@ -98,8 +98,6 @@ public class TickFlowCircleOverlay extends Overlay
 	private final Rectangle volumeButtonBounds = new Rectangle();
 	private float cachedStrokeW = -1f;
 	private Stroke cachedStroke;
-	private float cachedNowStrokeW = -1f;
-	private Stroke cachedNowStroke;
 	private float cachedHandStrokeW = -1f;
 	private Stroke cachedHandStroke;
 	private float cachedCycleStrokeW = -1f;
@@ -391,12 +389,12 @@ public class TickFlowCircleOverlay extends Overlay
 	/**
 	 * WoW-style NOW progress: dark clockwise pie over the cell, soft wash on the
 	 * remaining slice, and a yellow→green outer arc + tip spark matching the same angle.
+	 * Progress ring thickness uses the same diameter/12 scale as neighboring cells.
 	 */
 	private void drawNowProgress(Graphics2D g, int x, int y, int d, int cx, int cy, double progress)
 	{
-		float baseW = Math.max(2.5f, d / 12f);
-		float progressW = baseW * 1.4f;
-		int inset = Math.max(3, Math.round(baseW) + 1);
+		float ringW = Math.max(2.5f, d / 12f);
+		int inset = Math.max(3, Math.round(ringW) + 1);
 		int ix = x + inset;
 		int iy = y + inset;
 		int id = d - inset * 2;
@@ -425,11 +423,11 @@ public class TickFlowCircleOverlay extends Overlay
 			double handR = id / 2.0 * 0.88;
 			int tipX = (int) Math.round(cx + handR * Math.cos(rad));
 			int tipY = (int) Math.round(cy - handR * Math.sin(rad));
-			g.setStroke(handStroke(Math.max(1.0f, progressW * 0.28f)));
+			g.setStroke(handStroke(Math.max(1.0f, ringW * 0.28f)));
 			g.setColor(NOW_HAND);
 			g.drawLine(cx, cy, tipX, tipY);
 
-			g.setStroke(nowProgressStroke(progressW));
+			g.setStroke(ringStroke(d));
 			g.setColor(tip);
 			scratchArc.setArc(x + 1, y + 1, d - 2, d - 2, 90, extent, Arc2D.OPEN);
 			g.draw(scratchArc);
@@ -437,7 +435,7 @@ public class TickFlowCircleOverlay extends Overlay
 			double radius = (d - 2) / 2.0;
 			int sparkX = (int) Math.round(cx + radius * Math.cos(rad));
 			int sparkY = (int) Math.round(cy - radius * Math.sin(rad));
-			int spark = Math.max(2, Math.round(progressW * 0.85f));
+			int spark = Math.max(2, Math.round(ringW * 0.85f));
 			g.setColor(NOW_SPARK);
 			g.fillOval(sparkX - spark / 2, sparkY - spark / 2, spark, spark);
 			int core = Math.max(1, spark / 2);
@@ -826,16 +824,6 @@ public class TickFlowCircleOverlay extends Overlay
 			cachedStroke = new BasicStroke(w, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
 		}
 		return cachedStroke;
-	}
-
-	private Stroke nowProgressStroke(float width)
-	{
-		if (cachedNowStroke == null || Float.compare(cachedNowStrokeW, width) != 0)
-		{
-			cachedNowStrokeW = width;
-			cachedNowStroke = new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
-		}
-		return cachedNowStroke;
 	}
 
 	private Stroke handStroke(float width)
