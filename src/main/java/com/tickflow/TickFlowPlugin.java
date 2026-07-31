@@ -26,6 +26,7 @@ import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -67,6 +68,9 @@ public class TickFlowPlugin extends Plugin
 
 	@Inject
 	private Client client;
+
+	@Inject
+	private ClientThread clientThread;
 
 	@Inject
 	private TickFlowConfig config;
@@ -119,11 +123,8 @@ public class TickFlowPlugin extends Plugin
 		cachedAmmoId = -1;
 		combatStyle = CombatStyle.MELEE;
 		icons.ensureLoaded();
-		if (client.getGameState() == GameState.LOGGED_IN)
-		{
-			refreshEquipmentCache();
-			refreshCombatStyle();
-		}
+		// Plugin list toggles startUp on the EDT — never touch the client there.
+		clientThread.invoke(this::refreshClientCachesIfLoggedIn);
 		metronome.setVolumePercent(config.tickSoundVolume());
 		if (config.tickSound())
 		{
@@ -133,6 +134,15 @@ public class TickFlowPlugin extends Plugin
 		overlayManager.add(circleOverlay);
 		syncTimelineOverlays();
 		log.debug("TickFlow started");
+	}
+
+	private void refreshClientCachesIfLoggedIn()
+	{
+		if (client.getGameState() == GameState.LOGGED_IN)
+		{
+			refreshEquipmentCache();
+			refreshCombatStyle();
+		}
 	}
 
 	@Override
@@ -350,8 +360,7 @@ public class TickFlowPlugin extends Plugin
 		}
 		else if (gameState == GameState.LOGGED_IN)
 		{
-			refreshEquipmentCache();
-			refreshCombatStyle();
+			refreshClientCachesIfLoggedIn();
 		}
 	}
 
