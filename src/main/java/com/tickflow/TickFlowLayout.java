@@ -13,10 +13,13 @@ final class TickFlowLayout
 	static final float NOW_CELL_SCALE = 1.15f * 1.10f;
 
 	/** Shared cell extent (circle diameter / square cell width) so both panels match width. */
-	static final int BASE_CELL = 52;
+	static final int BASE_CELL = 46;
 
 	/** Shared gap between cells. */
-	static final int BASE_GAP = 5;
+	static final int BASE_GAP = 4;
+
+	/** Panel padding around content. */
+	static final int BASE_PAD = 6;
 
 	/** Soft amber at tick start — resets make the next tick easy to spot. */
 	static final Color PROGRESS_START = new Color(210, 175, 85);

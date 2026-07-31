@@ -34,7 +34,7 @@ import net.runelite.client.ui.overlay.OverlayPosition;
  */
 public class TickFlowCircleOverlay extends Overlay
 {
-	private static final Color PANEL_BG = new Color(14, 16, 18, 220);
+	private static final Color PANEL_BG = new Color(14, 16, 18, 185);
 	private static final Color PANEL_BORDER = new Color(58, 62, 68);
 	private static final Color TITLE = new Color(235, 235, 235);
 	private static final Color MUTED = new Color(150, 154, 158);
@@ -205,14 +205,14 @@ public class TickFlowCircleOverlay extends Overlay
 		// +15% then another +10% so NOW reads clearly on a fast timeline.
 		int nowDiameter = TickFlowLayout.nowSize(diameter);
 		int gap = scale(TickFlowLayout.BASE_GAP, scalePct);
-		int pad = scale(8, scalePct);
-		int headerH = scale(16, scalePct);
-		int sectionH = compact ? 0 : scale(18, scalePct);
-		int corner = scale(12, scalePct);
+		int pad = scale(TickFlowLayout.BASE_PAD, scalePct);
+		int headerH = scale(14, scalePct);
+		int sectionH = compact ? 0 : scale(16, scalePct);
+		int corner = scale(10, scalePct);
 		CycleFeedback feedback = config.showCycleFeedback() ? snap.getCycleFeedback() : null;
 		boolean showCycleHud = config.showReadiness() || feedback != null;
-		int cycleHudH = showCycleHud ? scale(42, scalePct) : 0;
-		int cycleHudGap = showCycleHud ? scale(4, scalePct) : 0;
+		int cycleHudH = showCycleHud ? scale(36, scalePct) : 0;
+		int cycleHudGap = showCycleHud ? scale(3, scalePct) : 0;
 
 		int contentW = 0;
 		for (int i = 0; i < slotCount; i++)

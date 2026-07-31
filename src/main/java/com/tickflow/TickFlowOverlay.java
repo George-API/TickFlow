@@ -38,7 +38,7 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 public class TickFlowOverlay extends Overlay
 {
 	// Panel chrome
-	private static final Color PANEL_BG = new Color(14, 16, 18, 220);
+	private static final Color PANEL_BG = new Color(14, 16, 18, 185);
 	private static final Color PANEL_BORDER = new Color(58, 62, 68);
 
 	// PAST — muted slate (receding history)
@@ -218,16 +218,16 @@ public class TickFlowOverlay extends Overlay
 		int nowSlotW = TickFlowLayout.nowSize(slotW);
 		int nowSlotH = TickFlowLayout.nowSize(slotH);
 		int gap = scale(TickFlowLayout.BASE_GAP, scalePct);
-		int pad = scale(8, scalePct);
-		int barH = scale(4, scalePct);
+		int pad = scale(TickFlowLayout.BASE_PAD, scalePct);
+		int barH = scale(3, scalePct);
 		int pulseH = 0;
 		int pulseGap = 0;
-		int headerH = compact ? scale(14, scalePct) : scale(16, scalePct);
-		int sectionH = compact ? 0 : scale(18, scalePct);
+		int headerH = compact ? scale(12, scalePct) : scale(14, scalePct);
+		int sectionH = compact ? 0 : scale(16, scalePct);
 		CycleFeedback feedback = config.showCycleFeedback() ? snap.getCycleFeedback() : null;
 		boolean showCycleHud = config.showReadiness() || feedback != null;
-		int cycleHudH = showCycleHud ? scale(42, scalePct) : 0;
-		int cycleHudGap = showCycleHud ? scale(4, scalePct) : 0;
+		int cycleHudH = showCycleHud ? scale(36, scalePct) : 0;
+		int cycleHudGap = showCycleHud ? scale(3, scalePct) : 0;
 
 		int debugH = config.debugMode() ? scale(78, scalePct) : 0;
 
@@ -244,7 +244,7 @@ public class TickFlowOverlay extends Overlay
 		Font bodyFont = FontManager.getRunescapeFont();
 		Font smallFont = FontManager.getRunescapeSmallFont();
 
-		int corner = scale(12, scalePct);
+		int corner = scale(10, scalePct);
 		scratchFrame.setRoundRect(0, 0, width - 1, height - 1, corner, corner);
 		graphics.setColor(PANEL_BG);
 		graphics.fill(scratchFrame);
