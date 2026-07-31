@@ -211,7 +211,8 @@ public class TickFlowOverlay extends Overlay
 
 		int scalePct = snapScale(config.overlayScale());
 		int slotCount = TickFlowState.clampTimeline(config.timelineLength());
-		boolean compact = config.mode() == OverlayMode.COMPACT;
+		boolean minimal = config.mode() == OverlayMode.MINIMAL;
+		boolean compact = config.mode() == OverlayMode.COMPACT || minimal;
 
 		int slotW = scale(TickFlowLayout.BASE_CELL, scalePct);
 		int slotH = scale(TickFlowLayout.BASE_CELL, scalePct);
@@ -222,16 +223,24 @@ public class TickFlowOverlay extends Overlay
 		int barH = scale(3, scalePct);
 		int pulseH = 0;
 		int pulseGap = 0;
-		int headerH = compact ? scale(12, scalePct) : scale(14, scalePct);
+		int headerH = scale(12, scalePct);
 		int sectionH = compact ? 0 : scale(16, scalePct);
-		CycleFeedback feedback = config.showCycleFeedback() ? snap.getCycleFeedback() : null;
-		boolean showCycleHud = config.showReadiness() || feedback != null;
+		CycleFeedback feedback = (!minimal && config.showCycleFeedback()) ? snap.getCycleFeedback() : null;
+		boolean showCycleHud = !minimal && (config.showReadiness() || feedback != null);
 		int cycleHudH = showCycleHud ? scale(36, scalePct) : 0;
 		int cycleHudGap = showCycleHud ? scale(3, scalePct) : 0;
 
-		int debugH = config.debugMode() ? scale(78, scalePct) : 0;
+		int debugH = (!minimal && config.debugMode()) ? scale(78, scalePct) : 0;
 
-		int contentW = (slotCount - 1) * (slotW + gap) + nowSlotW;
+		int btnSize = scale(12, scalePct);
+		int btnGap = scale(6, scalePct);
+		boolean soundOn = plugin.isTickSoundEnabled();
+		int controlCount = soundOn ? 3 : 2;
+		int controlsW = controlCount * btnSize + (controlCount - 1) * btnGap;
+
+		int contentW = minimal
+			? Math.max(nowSlotW, controlsW)
+			: (slotCount - 1) * (slotW + gap) + nowSlotW;
 		int width = contentW + pad * 2;
 		int height = pad + headerH + gap + nowSlotH + pulseGap + pulseH + sectionH
 			+ cycleHudGap + cycleHudH + debugH + pad;
@@ -240,7 +249,6 @@ public class TickFlowOverlay extends Overlay
 		Object oldAa = graphics.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
 		graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-		Font titleFont = FontManager.getRunescapeBoldFont();
 		Font bodyFont = FontManager.getRunescapeFont();
 		Font smallFont = FontManager.getRunescapeSmallFont();
 
@@ -255,16 +263,9 @@ public class TickFlowOverlay extends Overlay
 		configureCrispGraphics(graphics);
 
 		int y = pad;
-		graphics.setFont(titleFont);
-		graphics.setColor(TITLE);
-		graphics.drawString("TickFlow", pad, y + ascent(graphics));
-
-		int btnSize = scale(12, scalePct);
-		int btnGap = scale(6, scalePct);
 		int muteX = width - pad - btnSize;
 		int cursorX = muteX;
-		int btnY = y + 1;
-		boolean soundOn = plugin.isTickSoundEnabled();
+		int btnY = y + Math.max(0, (headerH - btnSize) / 2);
 		muteButtonBounds.setBounds(muteX - 2, btnY - 2, btnSize + 4, btnSize + 4);
 		drawMuteButton(graphics, muteX, btnY, btnSize, plugin.isTickSoundAudible());
 		if (soundOn)
@@ -287,7 +288,7 @@ public class TickFlowOverlay extends Overlay
 		double tickProgress = plugin.getTickProgress();
 		boolean showMiniPulse = config.showTickPulse();
 		int rowH = nowSlotH;
-		int xCursor = pad;
+		int xCursor = pad + (minimal ? Math.max(0, (contentW - nowSlotW) / 2) : 0);
 		int[] slotXs = new int[slots.size()];
 		int[] slotWs = new int[slots.size()];
 		int nowIndex = -1;
@@ -297,6 +298,10 @@ public class TickFlowOverlay extends Overlay
 			SlotView slot = slots.get(i);
 			Zone zone = zoneFor(slot);
 			boolean now = zone == Zone.NOW;
+			if (minimal && !now)
+			{
+				continue;
+			}
 			int cellW = now ? nowSlotW : slotW;
 			int cellH = now ? nowSlotH : slotH;
 			int x = xCursor;
@@ -322,11 +327,14 @@ public class TickFlowOverlay extends Overlay
 				graphics.drawRect(x + 1, cellY + 1, cellW - 3, cellH - 3);
 			}
 
-			graphics.setFont(smallFont);
-			graphics.setColor(style.meta);
-			String idx = formatRelative(slot.relative);
-			FontMetrics idxFm = graphics.getFontMetrics();
-			graphics.drawString(idx, x + (cellW - idxFm.stringWidth(idx)) / 2, cellY + barH + ascent(graphics) + 1);
+			if (!minimal)
+			{
+				graphics.setFont(smallFont);
+				graphics.setColor(style.meta);
+				String idx = formatRelative(slot.relative);
+				FontMetrics idxFm = graphics.getFontMetrics();
+				graphics.drawString(idx, x + (cellW - idxFm.stringWidth(idx)) / 2, cellY + barH + ascent(graphics) + 1);
+			}
 
 			drawActionIcon(graphics, slot, x, cellY + barH, cellW, cellH - barH);
 
@@ -357,7 +365,7 @@ public class TickFlowOverlay extends Overlay
 			y += cycleHudH;
 		}
 
-		if (config.debugMode())
+		if (!minimal && config.debugMode())
 		{
 			graphics.setFont(smallFont);
 			graphics.setColor(MUTED);

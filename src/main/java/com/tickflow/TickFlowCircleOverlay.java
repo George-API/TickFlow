@@ -14,6 +14,8 @@ import java.awt.RenderingHints;
 import java.awt.Stroke;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Arc2D;
+import java.awt.geom.Ellipse2D;
+import java.awt.geom.Line2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
@@ -98,10 +100,14 @@ public class TickFlowCircleOverlay extends Overlay
 	private final Rectangle volumeButtonBounds = new Rectangle();
 	private float cachedStrokeW = -1f;
 	private Stroke cachedStroke;
+	private float cachedProgressStrokeW = -1f;
+	private Stroke cachedProgressStroke;
 	private float cachedHandStrokeW = -1f;
 	private Stroke cachedHandStroke;
 	private float cachedCycleStrokeW = -1f;
 	private Stroke cachedCycleStroke;
+	private final Ellipse2D.Double scratchEllipse = new Ellipse2D.Double();
+	private final Line2D.Double scratchLine = new Line2D.Double();
 	@Nullable
 	private TickFlowState.Snapshot cachedSnap;
 	@Nullable
@@ -199,31 +205,46 @@ public class TickFlowCircleOverlay extends Overlay
 
 		int scalePct = snapScale(config.overlayScale());
 		int slotCount = TickFlowState.clampTimeline(config.timelineLength());
-		boolean compact = config.mode() == OverlayMode.COMPACT;
+		boolean minimal = config.mode() == OverlayMode.MINIMAL;
+		boolean compact = config.mode() == OverlayMode.COMPACT || minimal;
 
 		int diameter = scale(TickFlowLayout.BASE_CELL, scalePct);
 		// +15% then another +10% so NOW reads clearly on a fast timeline.
 		int nowDiameter = TickFlowLayout.nowSize(diameter);
 		int gap = scale(TickFlowLayout.BASE_GAP, scalePct);
 		int pad = scale(TickFlowLayout.BASE_PAD, scalePct);
-		int headerH = scale(14, scalePct);
+		int headerH = scale(12, scalePct);
 		int sectionH = compact ? 0 : scale(16, scalePct);
 		int corner = scale(10, scalePct);
-		CycleFeedback feedback = config.showCycleFeedback() ? snap.getCycleFeedback() : null;
-		boolean showCycleHud = config.showReadiness() || feedback != null;
+		CycleFeedback feedback = (!minimal && config.showCycleFeedback()) ? snap.getCycleFeedback() : null;
+		boolean showCycleHud = !minimal && (config.showReadiness() || feedback != null);
 		int cycleHudH = showCycleHud ? scale(36, scalePct) : 0;
 		int cycleHudGap = showCycleHud ? scale(3, scalePct) : 0;
 
-		int contentW = 0;
-		for (int i = 0; i < slotCount; i++)
+		int btnSize = scale(12, scalePct);
+		int btnGap = scale(6, scalePct);
+		boolean soundOn = plugin.isTickSoundEnabled();
+		int controlCount = soundOn ? 3 : 2;
+		int controlsW = controlCount * btnSize + (controlCount - 1) * btnGap;
+
+		int contentW;
+		if (minimal)
 		{
-			contentW += diameter;
-			if (i < slotCount - 1)
-			{
-				contentW += gap;
-			}
+			contentW = Math.max(nowDiameter, controlsW);
 		}
-		contentW += nowDiameter - diameter;
+		else
+		{
+			contentW = 0;
+			for (int i = 0; i < slotCount; i++)
+			{
+				contentW += diameter;
+				if (i < slotCount - 1)
+				{
+					contentW += gap;
+				}
+			}
+			contentW += nowDiameter - diameter;
+		}
 
 		int width = contentW + pad * 2;
 		int height = pad + headerH + gap + nowDiameter + sectionH
@@ -235,7 +256,6 @@ public class TickFlowCircleOverlay extends Overlay
 		g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 		g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_OFF);
 
-		Font titleFont = FontManager.getRunescapeBoldFont();
 		Font bodyFont = FontManager.getRunescapeFont();
 		Font smallFont = FontManager.getRunescapeSmallFont();
 
@@ -246,16 +266,9 @@ public class TickFlowCircleOverlay extends Overlay
 		g.draw(scratchFrame);
 
 		int y = pad;
-		g.setFont(titleFont);
-		g.setColor(TITLE);
-		g.drawString("TickFlow", pad, y + ascent(g));
-
-		int btnSize = scale(12, scalePct);
-		int btnGap = scale(6, scalePct);
 		int muteX = width - pad - btnSize;
 		int cursorX = muteX;
-		int btnY = y + 1;
-		boolean soundOn = plugin.isTickSoundEnabled();
+		int btnY = y + Math.max(0, (headerH - btnSize) / 2);
 		muteButtonBounds.setBounds(muteX - 2, btnY - 2, btnSize + 4, btnSize + 4);
 		drawMuteButton(g, muteX, btnY, btnSize, plugin.isTickSoundAudible());
 		if (soundOn)
@@ -277,7 +290,7 @@ public class TickFlowCircleOverlay extends Overlay
 		List<CircleSlot> slots = slotsFor(snap, slotCount);
 		double tickProgress = plugin.getTickProgress();
 		int rowH = nowDiameter;
-		int x = pad;
+		int x = pad + (minimal ? Math.max(0, (contentW - nowDiameter) / 2) : 0);
 		int[] slotXs = new int[slots.size()];
 		int[] slotDs = new int[slots.size()];
 		int nowIndex = -1;
@@ -286,6 +299,10 @@ public class TickFlowCircleOverlay extends Overlay
 		{
 			CircleSlot slot = slots.get(i);
 			boolean now = slot.relative == 0;
+			if (minimal && !now)
+			{
+				continue;
+			}
 			int d = now ? nowDiameter : diameter;
 			slotXs[i] = x;
 			slotDs[i] = d;
@@ -294,7 +311,9 @@ public class TickFlowCircleOverlay extends Overlay
 				nowIndex = i;
 			}
 			int cellY = y + (rowH - d) / 2;
-			int cx = x + d / 2;
+			// Match the stroked oval's true center (avoids 0.5px tip jitter on odd diameters).
+			double cx = x + 1 + (d - 2) / 2.0;
+			double cy = cellY + 1 + (d - 2) / 2.0;
 
 			Color fill;
 			Color ring;
@@ -343,15 +362,19 @@ public class TickFlowCircleOverlay extends Overlay
 				// Icon under the swipe so the dark wedge reads like a WoW cooldown.
 				drawIcon(g, slot, x, cellY, d);
 				double p = clamp01(tickProgress);
-				drawNowProgress(g, x, cellY, d, cx, cellY + d / 2, p);
+				drawNowProgress(g, d, cx, cy, p);
 			}
 			g.setStroke(oldStroke);
 
-			g.setFont(smallFont);
-			g.setColor(text);
-			FontMetrics fm = g.getFontMetrics();
-			String idx = formatRelative(slot.relative);
-			g.drawString(idx, cx - fm.stringWidth(idx) / 2, cellY + fm.getAscent() + 2);
+			if (!minimal)
+			{
+				g.setFont(smallFont);
+				g.setColor(text);
+				FontMetrics fm = g.getFontMetrics();
+				String idx = formatRelative(slot.relative);
+				int labelX = (int) Math.round(cx - fm.stringWidth(idx) / 2.0);
+				g.drawString(idx, labelX, cellY + fm.getAscent() + 2);
+			}
 
 			if (!now)
 			{
@@ -390,59 +413,70 @@ public class TickFlowCircleOverlay extends Overlay
 	 * WoW-style NOW progress: dark clockwise pie over the cell, soft wash on the
 	 * remaining slice, and a yellow→green outer arc + tip spark matching the same angle.
 	 * Progress ring thickness uses the same diameter/12 scale as neighboring cells.
+	 * Geometry stays in doubles (same center as the base ring) so the tip doesn't shake.
 	 */
-	private void drawNowProgress(Graphics2D g, int x, int y, int d, int cx, int cy, double progress)
+	private void drawNowProgress(Graphics2D g, int d, double cx, double cy, double progress)
 	{
 		float ringW = Math.max(2.5f, d / 12f);
-		int inset = Math.max(3, Math.round(ringW) + 1);
-		int ix = x + inset;
-		int iy = y + inset;
-		int id = d - inset * 2;
+		double inset = Math.max(3.0, ringW + 1.0);
+		double id = d - inset * 2.0;
+		double pieX = cx - id / 2.0;
+		double pieY = cy - id / 2.0;
+		double outer = d - 2.0;
+		double ox = cx - outer / 2.0;
+		double oy = cy - outer / 2.0;
 		double extent = -progress * 360.0;
 		double remainExtent = -(1.0 - progress) * 360.0;
 		double tipAngle = 90.0 + extent;
 		Color tip = TickFlowLayout.progressColor(progress);
 
 		Stroke old = g.getStroke();
+		Object oldStrokeControl = g.getRenderingHint(RenderingHints.KEY_STROKE_CONTROL);
+		g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
 
 		if (progress < 0.999 && remainExtent < -0.5)
 		{
 			g.setColor(NOW_REMAIN_WASH);
-			scratchArc.setArc(ix, iy, id, id, tipAngle, remainExtent, Arc2D.PIE);
+			scratchArc.setArc(pieX, pieY, id, id, tipAngle, remainExtent, Arc2D.PIE);
 			g.fill(scratchArc);
 		}
 
 		if (progress > 0.001)
 		{
 			g.setColor(NOW_SWIPE);
-			scratchArc.setArc(ix, iy, id, id, 90, extent, Arc2D.PIE);
+			scratchArc.setArc(pieX, pieY, id, id, 90, extent, Arc2D.PIE);
 			g.fill(scratchArc);
 
 			double rad = Math.toRadians(tipAngle);
+			double cos = Math.cos(rad);
+			double sin = Math.sin(rad);
 			// Hand stops short of the ring so the tip reads lighter.
 			double handR = id / 2.0 * 0.88;
-			int tipX = (int) Math.round(cx + handR * Math.cos(rad));
-			int tipY = (int) Math.round(cy - handR * Math.sin(rad));
 			g.setStroke(handStroke(Math.max(1.0f, ringW * 0.28f)));
 			g.setColor(NOW_HAND);
-			g.drawLine(cx, cy, tipX, tipY);
+			scratchLine.setLine(cx, cy, cx + handR * cos, cy - handR * sin);
+			g.draw(scratchLine);
 
-			g.setStroke(ringStroke(d));
+			// CAP_BUTT keeps the leading edge locked to tipAngle (round caps crawl under AA).
+			g.setStroke(progressStroke(ringW));
 			g.setColor(tip);
-			scratchArc.setArc(x + 1, y + 1, d - 2, d - 2, 90, extent, Arc2D.OPEN);
+			scratchArc.setArc(ox, oy, outer, outer, 90, extent, Arc2D.OPEN);
 			g.draw(scratchArc);
 
-			double radius = (d - 2) / 2.0;
-			int sparkX = (int) Math.round(cx + radius * Math.cos(rad));
-			int sparkY = (int) Math.round(cy - radius * Math.sin(rad));
-			int spark = Math.max(2, Math.round(ringW * 0.85f));
+			double radius = outer / 2.0;
+			double sparkX = cx + radius * cos;
+			double sparkY = cy - radius * sin;
+			double spark = Math.max(2.0, ringW * 0.85);
 			g.setColor(NOW_SPARK);
-			g.fillOval(sparkX - spark / 2, sparkY - spark / 2, spark, spark);
-			int core = Math.max(1, spark / 2);
+			scratchEllipse.setFrame(sparkX - spark / 2.0, sparkY - spark / 2.0, spark, spark);
+			g.fill(scratchEllipse);
+			double core = Math.max(1.0, spark / 2.0);
 			g.setColor(NOW_SPARK_CORE);
-			g.fillOval(sparkX - core / 2, sparkY - core / 2, core, core);
+			scratchEllipse.setFrame(sparkX - core / 2.0, sparkY - core / 2.0, core, core);
+			g.fill(scratchEllipse);
 		}
 		g.setStroke(old);
+		g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, oldStrokeControl);
 	}
 
 	private void drawStyleButton(Graphics2D g, int x, int y, int size, TimelineStyle current)
@@ -826,12 +860,22 @@ public class TickFlowCircleOverlay extends Overlay
 		return cachedStroke;
 	}
 
+	private Stroke progressStroke(float width)
+	{
+		if (cachedProgressStroke == null || Float.compare(cachedProgressStrokeW, width) != 0)
+		{
+			cachedProgressStrokeW = width;
+			cachedProgressStroke = new BasicStroke(width, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
+		}
+		return cachedProgressStroke;
+	}
+
 	private Stroke handStroke(float width)
 	{
 		if (cachedHandStroke == null || Float.compare(cachedHandStrokeW, width) != 0)
 		{
 			cachedHandStrokeW = width;
-			cachedHandStroke = new BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+			cachedHandStroke = new BasicStroke(width, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
 		}
 		return cachedHandStroke;
 	}

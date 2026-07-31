@@ -24,7 +24,7 @@ public interface TickFlowConfig extends Config
 	@ConfigItem(
 		keyName = "mode",
 		name = "Overlay mode",
-		description = "Learn keeps zone headers. Compact hides PAST/NOW/NEXT text.",
+		description = "Learn: full timeline + headers. Compact: timeline without headers. Minimal: NOW tick only with style/volume controls.",
 		position = 1
 	)
 	default OverlayMode mode()

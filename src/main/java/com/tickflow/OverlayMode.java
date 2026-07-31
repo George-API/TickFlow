@@ -3,5 +3,7 @@ package com.tickflow;
 public enum OverlayMode
 {
 	LEARN,
-	COMPACT
+	COMPACT,
+	/** NOW cell only, plus style / volume controls. */
+	MINIMAL
 }
